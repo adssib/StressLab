@@ -122,7 +122,7 @@ early (which is where the interesting work is), with a profiler built into the s
 |---|---|
 | **What** must be true | [docs/SPEC.md](docs/SPEC.md) |
 | **How** a run is measured | [docs/METHODOLOGY.md](docs/METHODOLOGY.md) |
-| **How** it's shaped | docs/ARCHITECTURE.md — _coming_ |
+| **How** it's shaped | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | **In what order** | [docs/ROADMAP.md](docs/ROADMAP.md) |
 | **Why** | docs/decisions/ — _coming_ |
 
