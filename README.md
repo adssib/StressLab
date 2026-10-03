@@ -18,6 +18,16 @@ change at a time. Scale out only when the numbers say one machine is out of road
 
 *Generated from `runs/` by CI — never typed by hand.*
 
+## How it's measured
+
+- **One change per step.** Same app, data, load and machine — only the thing being tested differs.
+- **The bar:** p95 < 500 ms, p99 < 1 s, errors < 1%. A level counts only if **three 5-minute runs
+  all pass**.
+- **Past the limit too:** load at up to 2.5× the limit shows whether the system bends or
+  collapses — with and without load shedding.
+- **Honest runs:** runs where the load generator or the hardware was the problem are marked
+  invalid, not counted. Steps that didn't help still get a row.
+
 ## The ladder
 
 ```mermaid
@@ -28,7 +38,7 @@ flowchart TB
   end
   subgraph ACT2["Act 2 · when one machine is not enough"]
     direction LR
-    S5["5 Managed DB"] --> S6["6 Replica"] --> S7["7 Scale out"] --> S8["8 Kafka"] --> S9["9 Fan-out"] --> S10["10 Overload"]
+    S5["5 Managed DB"] --> S6["6 Read replica"] --> S7["7 Scale out"] --> S8["8 Async writes"] --> S9["9 Fan-out"] --> S10["10 Overload"]
   end
   ACT1 ==>|"out of road"| ACT2
 
@@ -37,6 +47,25 @@ flowchart TB
   class S0,S1,S2,S3,S4 act1
   class S5,S6,S7,S8,S9,S10 act2
 ```
+
+<details>
+<summary><b>The question each step answers</b></summary>
+
+| Step | The question |
+|---|---|
+| **0** Baseline | Where does a plain setup break, and why? |
+| **1** Queries | How much was just bad queries? |
+| **2** Pooling | Are requests waiting on the database, or on a connection to it? |
+| **3** Profiling | When does the Go side start to matter? |
+| **4** Cache | Is a cache worth the CPU it steals from the database? |
+| **5** Managed DB | What does the network hop cost, and what does "managed" buy? |
+| **6** Read replica | What changes when reads and writes go different ways? |
+| **7** Scale out | Does more API help, or just hit the database harder? |
+| **8** Async writes | What do you trade for cheap writes? *(Kafka API on Azure Event Hubs)* |
+| **9** Fan-out | Build feeds on read or on write — and what does a celebrity do to it? |
+| **10** Overload | Past the limit, does it bend or break? |
+
+</details>
 
 ## The lab
 
@@ -63,8 +92,7 @@ flowchart LR
   BOX -.->|"telemetry"| OBS
 ```
 
-**Stack:** Go · Postgres · Redis · Kafka (Event Hubs) · k6 · Prometheus · Loki · Tempo ·
-Pyroscope · Grafana · Docker · Terraform · Ansible · GitHub Actions · Azure
+**Built with** Go · Postgres · k6 · Grafana · Docker · Terraform · Ansible · Azure
 
 ---
 

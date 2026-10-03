@@ -26,11 +26,11 @@ flowchart TB
   end
   subgraph M3["M3 · Act 2: scale out"]
     direction LR
-    S5["5 Managed DB"] --> S6["6 Replica"] --> S7["7 Scale out"]
+    S5["5 Managed DB"] --> S6["6 Read replica"] --> S7["7 Scale out"]
   end
   subgraph M4["M4 · Act 2: events"]
     direction LR
-    S8["8 Kafka"] --> S9["9 Fan-out"]
+    S8["8 Async writes"] --> S9["9 Fan-out"]
   end
   subgraph M5["M5 · Past the limit"]
     direction LR

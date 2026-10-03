@@ -34,7 +34,7 @@ flowchart TB
   end
   subgraph ACT2["Act 2 · when one machine is not enough"]
     direction LR
-    S5["5 Managed DB"] --> S6["6 Replica"] --> S7["7 Scale out"] --> S8["8 Kafka"] --> S9["9 Fan-out"] --> S10["10 Overload"]
+    S5["5 Managed DB"] --> S6["6 Read replica"] --> S7["7 Scale out"] --> S8["8 Async writes"] --> S9["9 Fan-out"] --> S10["10 Overload"]
   end
   ACT1 ==>|"out of road"| ACT2
 
