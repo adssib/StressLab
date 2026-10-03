@@ -191,11 +191,12 @@ the baseline exactly.
 | **F5** | **One fixed load profile** (k6), and a **limit search** that finds the max users that pass the thresholds — defined in [METHODOLOGY.md](METHODOLOGY.md). |
 | **F6** | **Conformance before benchmark.** Every step passes the same suite before it's load-tested: every endpoint, status code, auth rule and error case, the consistency contract, and **byte-identical** E1/E2 bodies against the step-0 baseline on the same seed (once quiet). A step that fails is not benchmarked. |
 | **F7** | **Every run is recorded** as one committed JSON file in `runs/` (see *Run record*). |
-| **F8** | **`cmd/compare`** compares two runs and **refuses** when their held-fixed settings differ, printing what differs. |
+| **F8** | **`stresslab compare`** compares two runs and **refuses** when their held-fixed settings differ, printing what differs. |
 | **F9** | **Infrastructure is code.** Terraform creates and destroys every Azure resource; Ansible configures every machine and drives every run. Nothing is clicked together in the portal. |
 | **F10** | **Observability is always on** — the same exporters, scrape interval and tracing sample rate in every run, including the baseline, so their cost is identical everywhere. |
 | **F11** | **Dashboards are code.** Every Grafana dashboard is a committed JSON file, provisioned by Ansible. A rebuilt brain VM gets identical dashboards. |
 | **F12** | **Every cost is stated**: each run records the hourly price of everything it used, with the date and the source it was checked against. |
+| **F13** | **One CLI, `stresslab`, drives everything** — provisioning, configuration, deploys, conformance, runs, searches, comparisons. It **refuses to provision a role that's already running** (at most one brain and one machine under test), refuses to touch any subscription but Azure for Students, and runs long searches **on the brain**, so a laptop disconnect never kills a test. Commands → [ARCHITECTURE.md](ARCHITECTURE.md#the-stresslab-cli). |
 
 ## Non-functional requirements
 
@@ -223,7 +224,7 @@ Full definition, think times and the search procedure → [METHODOLOGY.md](METHO
 ## The held-fixed list
 
 Changing any of these **invalidates comparison with earlier runs**. Every run record stores
-them; `cmd/compare` refuses runs where they differ.
+them; `stresslab compare` refuses runs where they differ.
 
 | Held fixed | Value |
 |---|---|
@@ -358,12 +359,12 @@ dashboard — only from a committed run file.
 | VM sizes | `D2as_v4` under test, `D4s_v4` brain — both non-burstable, to avoid CPU-credit throttling |
 | Monitoring | self-hosted Prometheus + Grafana + Tempo on the brain |
 | Load mix | per loop: 10% like, 15% create a post |
+| Tooling | the `stresslab` CLI (Go) drives Terraform, Ansible and k6, and runs searches on the brain (F13) — replaces the old open decision on who drives the search |
 
 ## Open decisions
 
 | ID | Decision | Recommendation | Settled by |
 |---|---|---|---|
-| **D1** | Who drives the limit search — an Ansible loop, or a small Go program calling k6 | Go program (`cmd/search`): a binary search with confirmations is logic, and Ansible is built for configuring, not branching | step 0 |
 | **D2** | Step 4 cache: Redis on the same VM vs an in-process cache | Redis on the same VM first ("is it worth the CPU?"), in-process as a variant | step 4 |
 | **D3** | Step 7 scale-out: Container Apps vs VM Scale Sets | Decide at step 7, after checking how each counts against the 6-vCPU quota | step 7 |
 | **D4** | Step 8 queue: Azure Storage Queues vs Service Bus | Decide on price and delivery guarantees at step 8 | step 8 |
