@@ -6,8 +6,8 @@
 >
 > This is the **contract**: what must be true, the shapes the system speaks, and its bounds.
 > *How a run is measured* → [METHODOLOGY.md](METHODOLOGY.md). *How it's built* →
-> [ARCHITECTURE.md](ARCHITECTURE.md) _(coming)_. *In what order* → [ROADMAP.md](ROADMAP.md)
-> _(coming)_. *Why* → [decisions/](decisions/) _(coming)_.
+> [ARCHITECTURE.md](ARCHITECTURE.md). *In what order* → [ROADMAP.md](ROADMAP.md).
+> *Why* → [decisions/](decisions/) _(coming)_.
 >
 > If the code and this doc disagree, one of them is a bug — say which, don't silently drift.
 > **Present tense means it exists or is decided; anything later is marked with its step.**
@@ -35,7 +35,7 @@ flowchart TB
   end
   subgraph ACT2["Act 2 · when one machine is not enough"]
     direction LR
-    S5["5 Managed DB"] --> S6["6 Replica"] --> S7["7 Scale out"] --> S8["8 Async writes"] --> S9["9 Fan-out"] --> S10["10 Chaos"]
+    S5["5 Managed DB"] --> S6["6 Replica"] --> S7["7 Scale out"] --> S8["8 Kafka"] --> S9["9 Fan-out"] --> S10["10 Overload"]
   end
   ACT1 ==>|"out of road"| ACT2
 
@@ -55,9 +55,9 @@ flowchart TB
 | **5** | where Postgres runs | `db.host` | `local` (same VM) |
 | **6** | where reads go | `db.reads` | `primary` |
 | **7** | how many API instances | `api.instances` | `1` |
-| **8** | how likes are written | `writes.likes` | `sync` |
-| **9** | the feed model (adds follows) | `feed.mode` | `global` |
-| **10** | failures injected mid-run | `chaos` | `none` |
+| **8** | how likes are written — straight to Postgres, or as Kafka events a consumer batches | `writes.likes` | `sync` |
+| **9** | the feed model (adds follows); fan-out on write is a second Kafka consumer | `feed.mode` | `global` |
+| **10** | load past the limit, with and without **load shedding**; then failures mid-run | `api.shedding` · `chaos` | `off` · `none` |
 
 **Side experiments** — measured once, not part of the ladder's chain:
 
@@ -65,6 +65,7 @@ flowchart TB
 |---|---|---|
 | **X1** | `auth.mode`: `token` → `basic-every-request` | What does checking a password hash on every request cost? (Why tokens exist, in one number.) |
 | **X2** | `db.engine`: Postgres → Cosmos DB | What if we'd changed the database instead of tuning this one? _(optional)_ |
+| **X3** | `events.broker`: Event Hubs → self-hosted Kafka | What does *managed* Kafka cost and buy? _(optional)_ |
 
 ## The application
 
@@ -174,7 +175,7 @@ trade consistency for speed must state the trade, and the conformance suite chec
 |---|---|
 | 4 · cache | feed and `like_count` up to the cache TTL, set by step 4's ADR |
 | 6 · replica | reads up to the replica lag, measured and reported per run |
-| 8 · async likes | `like_count` up to the flush interval, set by step 8's ADR |
+| 8 · likes via Kafka | `like_count` up to the consumer lag plus the batch interval, measured per run |
 | 9 · fan-out on write | a new post reaches followers' timelines within the fan-out delay |
 
 Everywhere else, and for **all** responses once the system is quiet, the responses must match
@@ -193,10 +194,12 @@ the baseline exactly.
 | **F7** | **Every run is recorded** as one committed JSON file in `runs/` (see *Run record*). |
 | **F8** | **`stresslab compare`** compares two runs and **refuses** when their held-fixed settings differ, printing what differs. |
 | **F9** | **Infrastructure is code.** Terraform creates and destroys every Azure resource; Ansible configures every machine and drives every run. Nothing is clicked together in the portal. |
-| **F10** | **Observability is always on** — the same exporters, scrape interval and tracing sample rate in every run, including the baseline, so their cost is identical everywhere. |
+| **F10** | **Observability is always on** — metrics, logs, traces and profiles, with the same exporters, collectors, scrape interval, trace sample rate and profiling rate in every run, including the baseline, so their cost is identical everywhere. |
 | **F11** | **Dashboards are code.** Every Grafana dashboard is a committed JSON file, provisioned by Ansible. A rebuilt brain VM gets identical dashboards. |
 | **F12** | **Every cost is stated**: each run records the hourly price of everything it used, with the date and the source it was checked against. |
 | **F13** | **One CLI, `stresslab`, drives everything** — provisioning, configuration, deploys, conformance, runs, searches, comparisons. It **refuses to provision a role that's already running** (at most one brain and one machine under test), refuses to touch any subscription but Azure for Students, and runs long searches **on the brain**, so a laptop disconnect never kills a test. Commands → [ARCHITECTURE.md](ARCHITECTURE.md#the-stresslab-cli). |
+| **F14** | **Results publish themselves.** A GitHub Actions workflow regenerates the README's results table and charts from `runs/*.json` on every push that changes `runs/`. The README can never show a number that isn't in a committed run. |
+| **F15** | **Overload is measured, not just the limit.** Every step that reaches it gets an overload sweep (offered load past the limit), and step 10 compares it with load shedding off and on — [METHODOLOGY.md](METHODOLOGY.md#beyond-the-limit). |
 
 ## Non-functional requirements
 
@@ -236,7 +239,7 @@ them; `stresslab compare` refuses runs where they differ.
 | Runtime | Docker Compose on both VMs; **host networking** on the machine under test; image digests pinned |
 | Machine under test | `Standard_D2as_v4`, East US, OS image version |
 | Brain (load generator) | `Standard_D4s_v4`, same region, k6 version |
-| Observability | exporters, scrape interval, trace sample rate |
+| Observability | exporters, collectors, scrape interval, trace sample rate, profiling rate |
 | Go + Postgres versions | pinned, recorded per run |
 
 **A step varies exactly one switch** from the ladder table, and its run record names it.
@@ -249,7 +252,6 @@ One JSON file per run in `runs/`, named `<date>-s<step>-<variant>.json`:
 |---|---|
 | `fixed` | every held-fixed value above |
 | `step` | the ladder step, the switch it varied, the value, and the baseline run it compares against |
-| `prediction` | what was expected **before** the run, and why (written first, never edited after) |
 | `result` | max passing users (the highest level where **all 3 confirmations pass**); req/s, latencies and error rate as **median [min–max]** over the 3; p50/p95/p99; error rate; status-code counts; and **which threshold failed** at the next level up |
 | `search` | every level tried: users, pass/fail, the numbers |
 | `bottleneck` | CPU per process (API, Postgres, Redis…), pool wait time, top queries — what was saturated at the limit |
@@ -271,12 +273,15 @@ flowchart LR
       K6["k6"]
       PROM[("Prometheus")]
       TEMPO[("Tempo")]
+      LOKI[("Loki")]
+      PYRO[("Pyroscope")]
       GRAF["Grafana"]
     end
     subgraph SUT["Machine under test · D2as_v4 · disposable"]
       API["Go API"]
       PG[("Postgres")]
       EXP["exporters"]
+      ALLOY["Alloy"]
     end
     BUD["Budget alert"]
   end
@@ -288,6 +293,7 @@ flowchart LR
   PROM -->|"scrape"| EXP
   PROM -->|"scrape /metrics"| API
   API -.->|"traces"| TEMPO
+  ALLOY -.->|"logs, profiles"| LOKI & PYRO
   BR -->|"SSH tunnel"| GRAF
 ```
 
@@ -298,8 +304,9 @@ flowchart LR
 | **Quota** | 6 vCPUs in the region (checked 2026-10-03). Brain 4 + machine under test 2 = **6/6**. Newer AMD D-series (v5, v6) have no quota on this subscription |
 | **Machine under test** | `Standard_D2as_v4` — 2 vCPU, 8 GiB, AMD, non-burstable — $0.096/h |
 | **Brain** | `Standard_D4s_v4` — 4 vCPU, 16 GiB, Intel, non-burstable — $0.192/h |
+| **Kafka** _(step 8)_ | **Azure Event Hubs, Standard tier**, Kafka endpoint (Basic has none). Standard throughput unit $0.03/h; the price list also shows a "Standard Kafka Endpoint" meter at $0.09/h — how it's billed gets confirmed before step 8 |
 | **Network** | One virtual network, private traffic only between the VMs. The only public entry is SSH to the brain, locked to the laptop's IP |
-| **Runtime** | Everything runs in **Docker Compose** from step 0 — API, Postgres, exporters on the machine under test; k6, Prometheus, Grafana, Tempo on the brain. Ansible installs Docker and runs `docker compose up`. The machine under test uses **host networking**, so Docker's NAT layer never sits inside a measured request |
+| **Runtime** | Everything runs in **Docker Compose** from step 0 — API, Postgres, exporters and Grafana Alloy (log and profile collector) on the machine under test; k6, Prometheus, Loki, Tempo, Pyroscope and Grafana on the brain. Ansible installs Docker and runs `docker compose up`. The machine under test uses **host networking**, so Docker's NAT layer never sits inside a measured request |
 | **Prices** | Linux pay-as-you-go, East US, from the Azure Retail Prices API on 2026-10-03 |
 
 Act 2 may need resources beyond the 6-vCPU quota (a second VM for the database or a replica).
@@ -314,10 +321,31 @@ That's a decision for when Act 2 starts — see the open decisions.
 | **Database** | connections, transactions/s, cache hit ratio, locks, slowest queries | postgres_exporter + `pg_stat_statements` |
 | **Traffic** | virtual users, req/s, p50/p95/p99, status codes, failures — per endpoint | k6 → Prometheus |
 | **Traces** | one request's waterfall: handler → pool → query | OpenTelemetry → Tempo |
+| **Logs** | every container's logs, searchable, linked from traces by trace ID | Grafana Alloy → Loki |
+| **Profiles** | flame graphs over time — what the API's CPU was doing at any moment of a run | Grafana Alloy → Pyroscope |
+| **SLOs** | the three objectives, the error budget left, and its burn rate during a run | Prometheus |
+| **Kafka** _(step 8+)_ | events/s per topic, **consumer lag per partition** | Event Hubs metrics via Azure Monitor |
 | **Run overview** | one run on one screen: verdict, the limit, what saturated | all of the above |
+
+**Everything is linked:** from a slow request's trace, one click to its logs and to the flame
+graph from that moment — metrics, logs, traces and profiles in one place.
 
 **Grafana is for watching; `runs/` is the record.** No number reaches the README from a
 dashboard — only from a committed run file.
+
+## Service level objectives
+
+The pass/fail thresholds are framed as **SLOs** — the way an SRE team would write them:
+
+| SLO | Objective | Error budget (per steady window) |
+|---|---|---|
+| **Availability** | 99% of requests succeed (2xx) | 1% may fail |
+| **Latency** | 95% of requests complete in < 500 ms | 5% may be slower |
+| **Tail latency** | 99% of requests complete in < 1 s | 1% may be slower |
+
+A level passes when **no budget is exhausted**. During a run, Grafana shows each budget burning
+down, and a **burn-rate alert** fires when one is being spent fast enough to run out before the
+window ends — the same alerting pattern production teams use.
 
 ## Configuration
 
@@ -357,7 +385,11 @@ dashboard — only from a committed run file.
 | Runtime | Docker Compose on both VMs from step 0; host networking on the machine under test |
 | Topology | 2 VMs + laptop: brain (kept) + machine under test (disposable) |
 | VM sizes | `D2as_v4` under test, `D4s_v4` brain — both non-burstable, to avoid CPU-credit throttling |
-| Monitoring | self-hosted Prometheus + Grafana + Tempo on the brain |
+| Monitoring | the full Grafana stack on the brain: Prometheus (metrics), Loki (logs), Tempo (traces), Pyroscope (profiles), Grafana; Alloy collects on the machine under test |
+| Kafka | Azure Event Hubs, Standard, Kafka endpoint — steps 8–9 (replaces the old queue decision) |
+| Load shedding | step 10: the API returns `429 Retry-After` when full, measured against no shedding |
+| SLOs | the three thresholds, framed as SLOs with error budgets and burn-rate alerts |
+| Results | CI regenerates the README results from `runs/` (F14) |
 | Load mix | per loop: 10% like, 15% create a post |
 | Tooling | the `stresslab` CLI (Go) drives Terraform, Ansible and k6, and runs searches on the brain (F13) — replaces the old open decision on who drives the search |
 
@@ -367,5 +399,4 @@ dashboard — only from a committed run file.
 |---|---|---|---|
 | **D2** | Step 4 cache: Redis on the same VM vs an in-process cache | Redis on the same VM first ("is it worth the CPU?"), in-process as a variant | step 4 |
 | **D3** | Step 7 scale-out: Container Apps vs VM Scale Sets | Decide at step 7, after checking how each counts against the 6-vCPU quota | step 7 |
-| **D4** | Step 8 queue: Azure Storage Queues vs Service Bus | Decide on price and delivery guarantees at step 8 | step 8 |
 | **D5** | Act 2 capacity: shrink the brain, request more quota, or use managed services only | Decide when Act 1 ends | step 5 |

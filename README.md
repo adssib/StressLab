@@ -47,7 +47,7 @@ flowchart TB
   end
   subgraph ACT2["Act 2 · when one machine is not enough"]
     direction LR
-    S5["5 Managed DB"] --> S6["6 Replica"] --> S7["7 Scale out"] --> S8["8 Async writes"] --> S9["9 Fan-out"] --> S10["10 Chaos"]
+    S5["5 Managed DB"] --> S6["6 Replica"] --> S7["7 Scale out"] --> S8["8 Kafka"] --> S9["9 Fan-out"] --> S10["10 Overload"]
   end
   ACT1 ==>|"out of road"| ACT2
 
@@ -67,9 +67,9 @@ flowchart TB
 | **5** | Azure managed Postgres | What does the network hop cost, and what does "managed" buy? |
 | **6** | A read replica | What changes when reads and writes go different ways? |
 | **7** | Autoscaling API containers | Does more API help, or just hit the database harder? |
-| **8** | Likes through a queue, written in batches | What do you trade for cheap writes? |
-| **9** | Follows + personal feeds | Fan-out on read or on write, and what does a celebrity do to it? |
-| **10** | Kill the database mid-test | Does it degrade, or fall over? |
+| **8** | Likes become Kafka events, written in batches | What do you trade for cheap writes? |
+| **9** | Follows + personal feeds, fan-out as a Kafka consumer | Fan-out on read or on write, and what does a celebrity do to it? |
+| **10** | Push 2× past the limit, with and without load shedding — then kill the database | Does it bend, or break? |
 
 **The rule between the acts:** Act 2 starts only when Act 1's numbers show one machine is out
 of road.
@@ -103,7 +103,8 @@ from the machine being measured.
 |---|---|
 | **App** | Go (standard library HTTP), Postgres |
 | **Load** | k6 |
-| **Watching** | Prometheus + Grafana, self-hosted; Azure Monitor for the VM itself |
+| **Events** | Kafka (Azure Event Hubs) |
+| **Watching** | The full Grafana stack, self-hosted: Prometheus, Loki, Tempo, Pyroscope — metrics, logs, traces and profiles, all linked. SLOs with error budgets |
 | **Cloud** | Azure — on a student budget |
 | **Runtime** | Docker Compose on every VM |
 | **Infrastructure** | Terraform (builds it), Ansible (configures it and runs the tests) |
@@ -122,7 +123,7 @@ early (which is where the interesting work is), with a profiler built into the s
 | **What** must be true | [docs/SPEC.md](docs/SPEC.md) |
 | **How** a run is measured | [docs/METHODOLOGY.md](docs/METHODOLOGY.md) |
 | **How** it's shaped | docs/ARCHITECTURE.md — _coming_ |
-| **In what order** | docs/ROADMAP.md — _coming_ |
+| **In what order** | [docs/ROADMAP.md](docs/ROADMAP.md) |
 | **Why** | docs/decisions/ — _coming_ |
 
 ## Inspiration

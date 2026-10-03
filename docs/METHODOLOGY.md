@@ -122,6 +122,36 @@ flowchart TB
   `GET /v1/feed` alone until it breaks. It answers a different question — "how fast can it go?"
   vs "how many users can it hold?" — and is reported beside the result, never instead of it.
 
+## Beyond the limit
+
+The limit says where the system stops meeting its SLOs. **What happens after that** is the more
+important question in production: does it bend, or break?
+
+- **The overload sweep** offers load at **0.5×, 1×, 1.5×, 2× and 2.5×** the confirmed limit's
+  req/s, 2 minutes each, after the usual reset and warm-up.
+- **It uses an open model** (k6's constant-arrival-rate): requests arrive on schedule whether or
+  not earlier ones finished. Closed-model users wait for each response, so they quietly slow
+  down as the system does — which hides the collapse this sweep exists to show.
+- **It reports goodput:** requests per second that succeed **within the SLOs**. Throughput that
+  arrives too late to be useful doesn't count.
+- **Step 10 runs it twice** — load shedding off, then on — on the same chart:
+
+```mermaid
+%%{init: {"themeVariables": {"xyChart": {"plotColorPalette": "#dc2626, #16a34a"}}}}%%
+xychart-beta
+  title "Goodput vs offered load (illustrative shape, not data)"
+  x-axis "offered load (x the limit)" [0.5, 1.0, 1.5, 2.0, 2.5]
+  y-axis "goodput (req/s)" 0 --> 1000
+  line [500, 900, 600, 300, 150]
+  line [500, 900, 900, 880, 870]
+```
+
+*🔴 Without shedding, goodput collapses as queues fill and everything times out. 🟢 With shedding, the
+API turns away what it can't serve (`429 Retry-After`) and keeps serving the rest at full speed.*
+
+Overload runs **are expected to fail the SLOs** — they're a separate run type (`overload`) and
+never count toward a step's limit.
+
 ## A session
 
 ```mermaid
@@ -136,7 +166,6 @@ sequenceDiagram
   You->>TF: apply (start brain, create machine under test)
   You->>ANS: snapshot environment
   ANS->>SUT: lscpu, versions, config dump
-  You->>Git: commit predictions for today's steps
   ANS->>BR: control run (step 0 at its confirmed level)
   BR-->>ANS: within 10% of the committed baseline?
   alt drifted more than 10%
@@ -151,9 +180,6 @@ sequenceDiagram
   You->>TF: destroy machine under test, stop brain
 ```
 
-- **Predictions are committed before the runs.** Git history then proves the prediction wasn't
-  written after seeing the answer. A wrong prediction is kept, not edited — it's often the most
-  interesting line in the write-up.
 - **Control run first.** The video saw the same stack score ~8% lower at the end of the day than
   at the start. The control run turns that into a check: off by more than 10% → the session's
   numbers aren't trusted.
@@ -186,7 +212,7 @@ saturated**, from evidence, not a guess:
 | Go CPU profile (flame graph) | where the API's own time goes |
 | Which threshold failed first at the next level up | latency creep (p95), tail spikes (p99), or hard failures (errors) |
 
-That finding becomes the next step's prediction.
+That finding is what the next step goes after.
 
 ## Reading the results honestly
 
@@ -219,4 +245,4 @@ His practices, adapted to a project that holds the language still and changes th
 | Investigate anomalies before accepting them | Every result names its bottleneck from evidence |
 | Reported the CPU split | CPU per container, plus pool wait and query time |
 | Noticed drift across the day | A control run per session, and interleaved comparisons |
-| — | **New:** predictions committed before runs; invalid-run rules; a profile captured at the limit |
+| — | **New:** invalid-run rules; a profile captured at the limit; the overload sweep past the limit |

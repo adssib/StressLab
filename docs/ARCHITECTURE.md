@@ -3,11 +3,11 @@
 > **TL;DR:** Two VMs. The **brain** generates load and watches everything; the **machine under
 > test** runs the system. Step 0 is just the Go API and Postgres. Act 1 adds PgBouncer and Redis
 > on the same machine. Act 2 moves pieces off it, one at a time, onto Azure managed services —
-> managed Postgres, a replica, Container Apps, a queue and a worker — until the machine under
-> test is only a data box, or nothing at all.
+> managed Postgres, a replica, Container Apps, Kafka on Event Hubs — until the machine under
+> test is only a data box. Step 10 then pushes everything past its limit.
 >
 > *What* must be true → [SPEC.md](SPEC.md). *How a run is measured* →
-> [METHODOLOGY.md](METHODOLOGY.md). *In what order* → [ROADMAP.md](ROADMAP.md) _(coming)_.
+> [METHODOLOGY.md](METHODOLOGY.md). *In what order* → [ROADMAP.md](ROADMAP.md).
 > **Present tense means step 0; later pieces are marked with the step that adds them.**
 
 ## What runs where, step by step
@@ -24,13 +24,13 @@ The whole inventory, in one table. ➕ added · ➡️ moved · ✖️ removed.
 | **5** Managed DB | ➡️ Postgres off the VM | api · pgbouncer · redis | ➕ **Azure Database for PostgreSQL** (Flexible Server), ➕ **Key Vault** | ➕ Azure Monitor data source |
 | **6** Replica | ➕ read replica | same | ➕ **read replica** | same |
 | **7** Scale out | ➡️ API off the VM, N copies | pgbouncer · redis — now a *data box* | ➕ **Container Registry**, ➕ **Container Apps** _(or VM Scale Sets — SPEC D3)_ | same |
-| **8** Async writes | ➕ queue + worker | same | ➕ **queue** _(Storage Queues or Service Bus — SPEC D4)_, ➕ **worker** container | same |
-| **9** Fan-out | ➕ follows, per-user timelines | same — Redis now holds timelines | worker also fans out new posts | same |
-| **10** Chaos | failures injected mid-run | same | _optional:_ Azure Chaos Studio | same |
+| **8** Kafka | ➕ likes become events | same | ➕ **Azure Event Hubs** (Kafka endpoint), ➕ **like-counter** consumer | ➕ Kafka dashboard |
+| **9** Fan-out | ➕ follows, per-user timelines | same — Redis now holds timelines | ➕ **fan-out** consumer on the `posts` topic | same |
+| **10** Overload | ➕ load shedding in the API; overload sweep; then failures mid-run | same | _optional:_ Azure Chaos Studio | same |
 
-**Always on, every step:** node_exporter, cAdvisor (CPU per container), and an exporter for each
-data service (postgres, pgbouncer, redis), so the observability cost is identical everywhere
-(SPEC F10).
+**Always on, every step:** node_exporter, cAdvisor (CPU per container), an exporter for each
+data service (postgres, pgbouncer, redis), and **Grafana Alloy** shipping logs to Loki and
+profiles to Pyroscope — so the observability cost is identical everywhere (SPEC F10).
 
 ## Step 0: the starting line
 
@@ -46,6 +46,8 @@ flowchart LR
       K6["k6"]
       PROM[("Prometheus :9090")]
       TEMPO[("Tempo :4318")]
+      LOKI[("Loki :3100")]
+      PYRO[("Pyroscope :4040")]
       GRAF["Grafana :3000"]
       NE1["node_exporter"]
     end
@@ -55,6 +57,7 @@ flowchart LR
       NE2["node_exporter :9100"]
       CAD["cAdvisor :8081"]
       PGX["postgres_exporter :9187"]
+      ALLOY["Grafana Alloy"]
     end
   end
   K6 -->|"HTTP"| API
@@ -65,8 +68,12 @@ flowchart LR
   PROM -->|"scrape"| CAD
   PROM -->|"scrape"| PGX
   API -.->|"OTLP traces"| TEMPO
+  ALLOY -.->|"logs"| LOKI
+  ALLOY -.->|"profiles"| PYRO
   GRAF --> PROM
   GRAF --> TEMPO
+  GRAF --> LOKI
+  GRAF --> PYRO
   BR -->|"SSH tunnel"| GRAF
   TF -->|"create / destroy"| VNET
   ANS -->|"SSH"| BRAIN
@@ -110,13 +117,17 @@ flowchart LR
   K6["k6 (brain)"] -->|"HTTP"| API
   subgraph ACA["Container Apps"]
     API["api × N<br/>(autoscaled)"]
-    WK["worker<br/>like batches + fan-out"]
+    LC["like counter<br/>consumer"]
+    FO["fan-out<br/>consumer"]
   end
   subgraph DATA["Data box (the old machine under test)"]
     RD[("Redis<br/>cache + timelines")]
     PGB["PgBouncer"]
   end
-  Q[["Queue"]]
+  subgraph EH["Azure Event Hubs (Kafka)"]
+    TL[["topic: likes<br/>key = post_id"]]
+    TP[["topic: posts<br/>key = author_id"]]
+  end
   subgraph PGAZ["Azure Database for PostgreSQL"]
     PRI[("primary")]
     REP[("read replica")]
@@ -126,9 +137,10 @@ flowchart LR
   API -->|"cache"| RD
   API -->|"writes"| PGB --> PRI
   API -->|"reads"| REP
-  API -->|"likes, new posts"| Q --> WK
-  WK -->|"batched writes"| PRI
-  WK -->|"timelines"| RD
+  API -->|"post_liked"| TL --> LC
+  API -->|"post_created"| TP --> FO
+  LC -->|"batched writes"| PRI
+  FO -->|"timelines"| RD
   PRI -.->|"replication"| REP
   ACA -.->|"secrets via managed identity"| KV
 ```
@@ -141,9 +153,10 @@ switch at its baseline value, the chain is just the Postgres store.
 
 ```mermaid
 flowchart LR
-  H["HTTP handlers<br/>(never change)"] --> AUTH["auth middleware<br/>Bearer check"]
+  SHED["load shedder<br/>step 10 · api.shedding: on"] --> H["HTTP handlers<br/>(never change)"]
+  H --> AUTH["auth middleware<br/>Bearer check"]
   AUTH --> CW["cache wrapper<br/>step 4 · cache: redis"]
-  CW --> AW["async-writes wrapper<br/>step 8 · writes.likes: queue"]
+  CW --> AW["events wrapper<br/>step 8 · writes.likes: kafka"]
   AW --> RR["read router<br/>step 6 · db.reads: replica"]
   RR --> PS["Postgres store<br/>step 0"]
   PS --> DB[("primary")]
@@ -152,7 +165,7 @@ flowchart LR
   classDef base fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
   classDef opt fill:#f3f4f6,stroke:#6b7280,color:#111827,stroke-dasharray: 4 3
   class H,AUTH,PS,DB base
-  class CW,AW,RR,REPL opt
+  class SHED,CW,AW,RR,REPL opt
 ```
 
 Dashed boxes are off at step 0. Turning one on is the experiment; nothing else in the request
@@ -201,7 +214,6 @@ stresslab <command> [target] [--flags]
 | | `deploy --step 4` | Sets that step's switches on the machine under test and restarts the API |
 | | `conformance` | The conformance suite — a step can't be benchmarked until it passes |
 | **Testing** | `session start` · `session end` | Environment snapshot + control run · collect, write run records, commit |
-| | `predict --step 4 "<why>"` | Writes the prediction into the run record **before** any run |
 | | `run --step 4 --users 5000 --duration 2m` | One run at one level |
 | | `search --step 4` | The full limit search ([METHODOLOGY](METHODOLOGY.md#finding-the-limit)) |
 | | `confirm --step 4 --users 5250 --count 3 [--interleave-with 3]` | The confirmations, optionally alternating with the step before |
@@ -217,7 +229,6 @@ stresslab <command> [target] [--flags]
 | `az account show` must be Azure for Students | deploying into the university's production subscription |
 | one running VM per role | a second brain or machine under test quietly doubling the bill (and blowing the 6-vCPU quota) |
 | conformance passed for this step's commit | benchmarking a wrong implementation |
-| a prediction exists for the step | writing the prediction after seeing the answer |
 | the session's control run passed | measuring on a drifted environment |
 
 ### Long tests run on the brain
@@ -235,7 +246,7 @@ sequenceDiagram
   participant SUT as Machine under test
 
   You->>CLI: stresslab search --step 4
-  CLI->>CLI: guards: subscription, cap, conformance, prediction
+  CLI->>CLI: guards: subscription, cap, conformance
   CLI->>AG: start the search job (over SSH)
   CLI-->>You: started, safe to close the laptop
   loop each level
@@ -265,7 +276,7 @@ the brain with nothing to install — no Python version or virtualenv to manage 
 | 6432 | PgBouncer _(step 2)_ | the machine itself; Container Apps from step 7 |
 | 6379 | Redis _(step 4)_ | the machine itself; Container Apps from step 7 |
 | 9100 · 8081 · 9187 · 9127 · 9121 | node_exporter · cAdvisor · postgres / pgbouncer / redis exporters | brain only |
-| 9090 · 3000 · 4318 | Prometheus · Grafana · Tempo (OTLP) | the brain itself; Grafana via SSH tunnel |
+| 9090 · 3000 · 4318 · 3100 · 4040 | Prometheus · Grafana · Tempo (OTLP) · Loki · Pyroscope | the brain itself (Loki and Pyroscope also from the machine under test's Alloy); Grafana via SSH tunnel |
 
 Network security groups enforce the "reachable from" column; nothing else is open.
 
@@ -276,11 +287,13 @@ StressLab/
 ├── cmd/
 │   ├── api/          the Go API
 │   ├── seed/         deterministic dataset → the seed template database
+│   ├── consumer/     Kafka consumers: like counter, fan-out (steps 8–9)
 │   └── stresslab/    the CLI: provision, deploy, search, compare … (laptop + brain)
 ├── internal/
 │   ├── api/          handlers + auth middleware
 │   ├── store/        Store interface, the Postgres store, and one package per wrapper
-│   ├── telemetry/    metrics + tracing setup
+│   ├── telemetry/    metrics, logs, tracing and profiling setup
+│   ├── events/       Kafka producer + event shapes (step 8)
 │   └── cli/          the CLI's commands, guards and the search job
 ├── conformance/      the conformance suite (SPEC F6)
 ├── loadtest/         the k6 script and its options (held fixed)
@@ -288,6 +301,7 @@ StressLab/
 │   ├── brain/        compose.yaml + Prometheus, Grafana, Tempo config
 │   └── sut/          compose.yaml + Postgres, PgBouncer, Redis config
 ├── dashboards/       Grafana dashboards as JSON (SPEC F11)
+├── .github/workflows/ CI: build, test, lint — and results publishing (SPEC F14)
 ├── infra/            Terraform: network, VMs, budget alert; Act 2 services as they arrive
 ├── ansible/          inventory, roles, and the session / run playbooks
 ├── runs/             one JSON file per run — committed, never edited
@@ -302,5 +316,7 @@ StressLab/
 | ⚠️ | **Quota:** 6 vCPUs in the region, and step 0 already uses all 6 | Act 2 leans on managed services; whether Container Apps and managed Postgres count against the VM quota gets checked before step 5 (SPEC D5) |
 | ⚠️ | **Managed Postgres sizing:** whether a read replica is allowed on the cheapest tier is unverified | Check before step 6; if not, step 6 needs a paid tier and gets priced first |
 | ⚠️ | **Act 2 cost** is not yet priced | Every Act 2 service gets a price from the Retail Prices API before its step, like the VMs did |
+| ⚠️ | **Event Hubs billing:** the price list has a separate "Standard Kafka Endpoint" meter ($0.09/h) next to the throughput unit ($0.03/h) | Confirm how it's billed before step 8 |
+| ⚠️ | **Brain memory:** Loki, Pyroscope and Tempo now share 16 GiB with k6 | Watch the brain's memory in the first sessions; the invalid-run rule catches a starved k6 |
 | ⚠️ | **Docker overhead:** containers add a little CPU even with host networking | Same in every run, so it cancels out; noted in the write-up |
 | ⚠️ | **One availability zone:** the brain and the machine under test may land on different hosts with different network latency | The control run catches drift; the run record keeps the environment snapshot |
