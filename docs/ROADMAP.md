@@ -7,7 +7,6 @@
 >
 > *What* must be true → [SPEC.md](SPEC.md). *How a run is measured* →
 > [METHODOLOGY.md](METHODOLOGY.md). *How it's built* → [ARCHITECTURE.md](ARCHITECTURE.md).
-> *Why* → [decisions/](decisions/) _(coming)_.
 
 ## The whole thing
 
@@ -74,7 +73,7 @@ each one run and shown before the next.
 
 | # | Item | Done when |
 |---|---|---|
-| 0.1 | **Repo skeleton** — Go module, folders from [ARCHITECTURE](ARCHITECTURE.md#repository-layout), `CLAUDE.md`, ADR folder | `go build ./...` passes |
+| 0.1 | **Repo skeleton** — Go module, folders from [ARCHITECTURE](ARCHITECTURE.md#repository-layout), `AGENTS.md` | `go build ./...` passes |
 | 0.2 | **Go API, step-0 path** — E0–E6, auth, the `Store` interface, the Postgres store, `/metrics` | It answers on the laptop against a local Postgres |
 | 0.3 | **Seeder** — the deterministic dataset into a template database | Same seed twice → identical row checksums |
 | 0.4 | **Conformance suite** (SPEC F6) | Passes against the step-0 API; fails when a response is broken on purpose |
@@ -100,7 +99,7 @@ flowchart LR
   D --> E["confirm × 3<br/>interleaved"]
   E --> F["overload<br/>sweep"]
   F --> G["name the<br/>bottleneck"]
-  G --> H["ADR +<br/>run record"]
+  G --> H["run record<br/>+ notes"]
   H --> I["README row<br/>(automatic)"]
 ```
 
@@ -112,7 +111,7 @@ flowchart LR
 - [ ] Overload sweep run (from the step's limit)
 - [ ] The bottleneck at the limit is named, from evidence
 - [ ] Run records committed; any invalid runs kept with their reason
-- [ ] An ADR records what changed, the number, and what broke next — including when it didn't help
+- [ ] The run record's `notes` say what changed, the number, and what broke next — including when it didn't help
 - [ ] The README row appears (generated, never typed)
 - [ ] A Grafana screenshot or GIF of the step's limit is saved for the write-up
 
@@ -174,6 +173,6 @@ Optional, and never in the way of the ladder:
 | Milestone | Status |
 |---|---|
 | Docs: README, SPEC, METHODOLOGY, ARCHITECTURE, ROADMAP | ✅ |
-| Docs: decisions/, docs/README.md, CLAUDE.md | next |
+| Docs: docs/README.md, AGENTS.md, CLAUDE.md | ✅ |
 | M0 · Build the lab | not started |
 | M1 → M6 | not started |

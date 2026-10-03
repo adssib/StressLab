@@ -319,7 +319,7 @@ StressLab/
 ├── ansible/          inventory, roles, and the session / run playbooks
 ├── runs/             one JSON file per run — committed, never edited
 ├── scripts/          laptop setup
-└── docs/             SPEC, METHODOLOGY, ARCHITECTURE, ROADMAP, decisions/
+└── docs/             README (index), SPEC, METHODOLOGY, ARCHITECTURE, ROADMAP
 ```
 
 ## Assumptions and risks

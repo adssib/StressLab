@@ -7,7 +7,6 @@
 > This is the **contract**: what must be true, the shapes the system speaks, and its bounds.
 > *How a run is measured* → [METHODOLOGY.md](METHODOLOGY.md). *How it's built* →
 > [ARCHITECTURE.md](ARCHITECTURE.md). *In what order* → [ROADMAP.md](ROADMAP.md).
-> *Why* → [decisions/](decisions/) _(coming)_.
 >
 > If the code and this doc disagree, one of them is a bug — say which, don't silently drift.
 > **Present tense means it exists or is decided; anything later is marked with its step.**
@@ -176,7 +175,7 @@ trade consistency for speed must state the trade, and the conformance suite chec
 
 | Step | Allowed staleness |
 |---|---|
-| 4 · cache | feed and `like_count` up to the cache TTL, set by step 4's ADR |
+| 4 · cache | feed and `like_count` up to the cache TTL, set in step 4's config and recorded in its run record |
 | 6 · replica | reads up to the replica lag, measured and reported per run |
 | 8 · likes via Kafka | `like_count` up to the consumer lag plus the batch interval, measured per run |
 | 9 · fan-out on write | a new post reaches followers' timelines within the fan-out delay |
@@ -208,7 +207,7 @@ the baseline exactly.
 
 | ID | Requirement |
 |---|---|
-| **N1** | **Defaults, then experiments.** Step 0 runs everything at its defaults with the obvious indexes. Every change from a default is a step, with an ADR and a number. |
+| **N1** | **Defaults, then experiments.** Step 0 runs everything at its defaults with the obvious indexes. Every change from a default is a step, with its own run record and a number. |
 | **N2** | **Budget:** Azure for Students, $100 for 12 months. A budget alert exists before the first resource. Machines run only during sessions. |
 | **N3** | **Reproducible:** from a clean subscription, `terraform apply` plus one Ansible playbook reproduces any committed run's setup. |
 | **N4** | **Honest comparisons:** anything not like-for-like (e.g. a database on the same VM vs across the network) is labeled wherever it's shown. Negative results get a row too. |
@@ -264,6 +263,7 @@ One JSON file per run in `runs/`, named `<date>-s<step>-<variant>.json`:
 | `environment` | `lscpu` CPU model and clock, kernel, Go, Postgres and k6 versions, git commit, full Postgres config |
 | `control` | that session's control run (the step-0 baseline, re-run), to catch drift |
 | `cost` | hourly price of every resource used, date checked, source URL |
+| `notes` | a few plain sentences: what changed, the number, what broke next — the raw material for the write-up |
 
 ## Infrastructure
 
