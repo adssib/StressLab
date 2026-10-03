@@ -165,6 +165,9 @@ sequenceDiagram
   on the steady period after. The login cost is measured on purpose in side experiment **X1**.
 - Seeded users have known passwords (`user_<id>` / a seed-derived password) so k6 can log in.
   They are synthetic test accounts, not secrets. **The signing key is a secret.**
+- **An unknown username costs the same as a wrong password.** Login runs a dummy bcrypt compare
+  when the user doesn't exist, so the response time never reveals which usernames are real
+  (no user enumeration by timing). Both return the same `401` body.
 
 ### Consistency contract
 
@@ -190,7 +193,7 @@ the baseline exactly.
 | **F3** | **One store operation per request** for E1–E4, as in the video. No auth lookups, no read-before-write, no N+1. E0 is one lookup plus the bcrypt compare. |
 | **F4** | **Deterministic seed** (`cmd/seed`): 50,000 users, 500,000 posts, ~2,000,000 likes, from a fixed seed value. Same seed → same rows → same responses. Step 9 adds a deterministic follow graph with a few deliberate "celebrities". |
 | **F5** | **One fixed load profile** (k6), and a **limit search** that finds the max users that pass the thresholds — defined in [METHODOLOGY.md](METHODOLOGY.md). |
-| **F6** | **Conformance before benchmark.** Every step passes the same suite before it's load-tested: every endpoint, status code, auth rule and error case, the consistency contract, and **byte-identical** E1/E2 bodies against the step-0 baseline on the same seed (once quiet). A step that fails is not benchmarked. |
+| **F6** | **Conformance before benchmark.** Every step passes the same suite before it's load-tested: every endpoint, status code, auth rule and error case, the consistency contract, and **byte-identical** E1/E2 bodies against the step-0 baseline on the same seed (once quiet) — plus a timing check that an unknown username and a wrong password take the same time to reject. A step that fails is not benchmarked. |
 | **F7** | **Every run is recorded** as one committed JSON file in `runs/` (see *Run record*). |
 | **F8** | **`stresslab compare`** compares two runs and **refuses** when their held-fixed settings differ, printing what differs. |
 | **F9** | **Infrastructure is code.** Terraform creates and destroys every Azure resource; Ansible configures every machine and drives every run. Nothing is clicked together in the portal. |
@@ -220,6 +223,9 @@ Full definition, think times and the search procedure → [METHODOLOGY.md](METHO
   **15%: create a post** → think → repeat.
 - That works out to roughly **0.1 requests/second per user**, as in the video — so the results
   can sit next to his.
+- **Unhappy paths are part of the load**, at small fixed rates: posts that don't exist (`404`),
+  wrong passwords and unknown users at login (`401`), garbage tokens (`401`), invalid post
+  bodies (`400`). Each request declares the status it expects.
 - **Every random choice is seeded**, so two runs make the same sequence of decisions.
 - **A level passes** only if **p95 < 500 ms, p99 < 1 s and errors < 1%** over the steady period
   (ramp-up excluded), first over a 2-minute search step and then over a 5-minute confirmation.
@@ -239,7 +245,7 @@ them; `stresslab compare` refuses runs where they differ.
 | Runtime | Docker Compose on both VMs; **host networking** on the machine under test; image digests pinned |
 | Machine under test | `Standard_D2as_v4`, East US, OS image version |
 | Brain (load generator) | `Standard_D4s_v4`, same region, k6 version |
-| Observability | exporters, collectors, scrape interval, trace sample rate, profiling rate |
+| Observability | exporters, collectors, scrape interval, trace sample rate, profiling rate, **logging policy** |
 | Go + Postgres versions | pinned, recorded per run |
 
 **A step varies exactly one switch** from the ladder table, and its run record names it.
@@ -330,6 +336,23 @@ That's a decision for when Act 2 starts — see the open decisions.
 **Everything is linked:** from a slow request's trace, one click to its logs and to the flame
 graph from that moment — metrics, logs, traces and profiles in one place.
 
+### Logging
+
+Every log line costs CPU on the machine being measured — building the JSON, Docker writing it,
+Alloy shipping it — so **what gets logged is a fixed policy**, the same in every run:
+
+| Logged | Why |
+|---|---|
+| **Every non-2xx response** | Errors are what logs are for |
+| **Every request slower than 500 ms** (the latency SLO) | The slow ones are the interesting ones |
+| **1% of the rest** — the *same* requests that get traced | A sample of "normal", each with a trace to click into |
+
+- **Structured JSON on stdout** via Go's `log/slog`: time, level, method, route, status,
+  duration, user ID and **`trace_id`** — the field that links a log line to its trace. The API
+  never knows Loki exists; Docker captures stdout and Alloy ships it.
+- **Docker's log files are size-capped**, so a long search can't fill the disk.
+- **Log everything vs this policy** is an optional side experiment — what full logging costs.
+
 **Grafana is for watching; `runs/` is the record.** No number reaches the README from a
 dashboard — only from a committed run file.
 
@@ -339,9 +362,16 @@ The pass/fail thresholds are framed as **SLOs** — the way an SRE team would wr
 
 | SLO | Objective | Error budget (per steady window) |
 |---|---|---|
-| **Availability** | 99% of requests succeed (2xx) | 1% may fail |
+| **Availability** | 99% of requests get the response they expected | 1% may fail |
 | **Latency** | 95% of requests complete in < 500 ms | 5% may be slower |
 | **Tail latency** | 99% of requests complete in < 1 s | 1% may be slower |
+
+**What counts as a failure:** every request declares the status it expects. A `404` for a post
+that doesn't exist is a **success** — the server did its job. A `404` for a post that *does*
+exist, a `401` for a valid token, any `5xx`, a timeout or a connection error is a **failure**.
+Deliberate unhappy paths therefore never spend the error budget, but real bugs still do. A `429`
+from the load shedder (step 10) **counts as a failure** — that user wasn't served — which is why
+step 10 is judged on goodput.
 
 A level passes when **no budget is exhausted**. During a run, Grafana shows each budget burning
 down, and a **burn-rate alert** fires when one is being spent fast enough to run out before the

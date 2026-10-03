@@ -265,6 +265,19 @@ sequenceDiagram
 rules, run records), which outgrows shell scripts fast; and one static Go binary can be copied to
 the brain with nothing to install — no Python version or virtualenv to manage there.
 
+## How a log line travels
+
+```mermaid
+flowchart LR
+  API["Go API<br/>log/slog JSON → stdout"] --> DK["Docker<br/>size-capped log file"]
+  DK --> AL["Alloy<br/>tails and ships"]
+  AL -->|"private network"| LK[("Loki · brain")]
+  LK --> GR["Grafana<br/>linked to traces by trace_id"]
+```
+
+The first three boxes run on the machine under test, which is why only errors, slow requests and
+a 1% sample are logged (SPEC, Logging).
+
 ## Network and ports
 
 | Port | Service | Reachable from |

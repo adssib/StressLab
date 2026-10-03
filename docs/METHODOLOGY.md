@@ -52,6 +52,22 @@ flowchart LR
 | Create | a body from a seeded word list, 20–200 characters | Same posts every run |
 | Randomness | every choice comes from a per-user seed derived from one run seed | Two runs make the same sequence of decisions |
 
+### Unhappy paths
+
+Real traffic isn't all `200`s, and error paths cost the server different amounts. A small, fixed
+share of requests go wrong on purpose:
+
+| Unhappy path | Rate | Expected | What it costs the server |
+|---|---|---|---|
+| Open a post that doesn't exist | 2% of post opens | `404` | still a database query |
+| Wrong password at login, then the right one | 1% of logins | `401` | a full bcrypt compare |
+| A username that doesn't exist | 0.5% of logins | `401` | a dummy bcrypt compare — on purpose (SPEC, Authentication) |
+| A garbage or expired token | 0.5% of requests | `401` | almost nothing — rejected before the database |
+| An invalid post body (empty or over 280 characters) | 1% of creates | `400` | almost nothing — validation only |
+
+Each request carries the status it **expects**, and only a mismatch counts as an error — see
+*Pass or fail*.
+
 > **Our own numbers, not the video's.** The video says users "sometimes" like or post; the
 > 10% / 15% split and the 5–10 s think time are StressLab's choices, picked to land on the same
 > ~0.1 req/s per user. Every result reports **req/s next to users**, so a reader never has to
@@ -94,7 +110,7 @@ A run **passes** when, over the steady window:
 |---|---|
 | p95 latency | < 500 ms |
 | p99 latency | < 1 s |
-| Errors | < 1% — any non-2xx, timeout, connection error, or a 2xx whose body fails its shape check |
+| Errors | < 1% — any response whose status differs from the one the request **expected** (a deliberate `404` is a success; a `404` on a real post is not), any `5xx`, timeout or connection error, or a body that fails its shape check |
 
 ## Finding the limit
 
