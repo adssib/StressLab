@@ -1,0 +1,23 @@
+# Go build output
+/bin/
+
+# Secrets — never committed (AGENTS.md, Azure safety)
+.env
+*.env
+!*.env.example
+
+# Terraform state and caches (state can hold secrets)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+
+# Profiles and scratch captured locally; committed results live in runs/
+*.pprof
+/tmp/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
