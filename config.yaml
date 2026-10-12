@@ -1,0 +1,28 @@
+# StressLab API config — step 0: every switch at its baseline value.
+# A ladder step changes exactly one switch (SPEC.md, "The ladder").
+# Secrets are never here: DATABASE_URL and STRESSLAB_TOKEN_KEY are env vars.
+
+listen: ":8080"
+
+schema: v0          # step 1: query and index changes
+cache: none         # step 4: redis
+chaos: none         # step 10: failures injected mid-run
+
+db:
+  pool_size: 10     # connections per API process, as in the video
+  pooler: none      # step 2: pgbouncer
+  host: local       # step 5: managed
+  reads: primary    # step 6: replica
+
+api:
+  instances: 1      # step 7
+  shedding: "off"   # step 10: on
+
+writes:
+  likes: sync       # step 8: kafka
+
+feed:
+  mode: global      # step 9: follows + fan-out
+
+auth:
+  token_ttl: 1h     # longer than any run (SPEC, Authentication)
