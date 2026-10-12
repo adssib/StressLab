@@ -299,20 +299,24 @@ Network security groups enforce the "reachable from" column; nothing else is ope
 StressLab/
 ├── cmd/
 │   ├── api/          the Go API
-│   ├── seed/         deterministic dataset → the seed template database
+│   ├── seed/         build / reset / checksum the seed template database
 │   ├── consumer/     Kafka consumers: like counter, fan-out (steps 8–9)
 │   └── stresslab/    the CLI: provision, deploy, search, compare … (laptop + brain)
 ├── internal/
-│   ├── api/          handlers + auth middleware
+│   ├── api/          handlers, auth middleware, tokens
+│   ├── config/       config.yaml: every ladder switch, defaulting to step 0
+│   ├── seed/         the deterministic dataset generator + loader
 │   ├── store/        Store interface, the Postgres store, and one package per wrapper
 │   ├── telemetry/    metrics, logs, tracing and profiling setup
 │   ├── events/       Kafka producer + event shapes (step 8)
 │   └── cli/          the CLI's commands, guards and the search job
 ├── conformance/      the conformance suite (SPEC F6)
+├── config.yaml       the API's config — step 0
 ├── loadtest/         the k6 script and its options (held fixed)
 ├── deploy/
 │   ├── brain/        compose.yaml + Prometheus, Grafana, Tempo config
-│   └── sut/          compose.yaml + Postgres, PgBouncer, Redis config
+│   ├── sut/          compose.yaml + Postgres, PgBouncer, Redis config
+│   └── local/        laptop-only Postgres for development (port 5433)
 ├── dashboards/       Grafana dashboards as JSON (SPEC F11)
 ├── .github/workflows/ CI: build, test, lint — and results publishing (SPEC F14)
 ├── infra/            Terraform: network, VMs, budget alert; Act 2 services as they arrive

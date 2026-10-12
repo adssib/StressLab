@@ -98,4 +98,14 @@ _The CLI doesn't exist yet (ROADMAP M0.10). This table fills in as commands beco
 | Task | Command |
 |---|---|
 | Install laptop tools | `sudo bash scripts/install-tools.sh` |
+| Build everything | `go build ./...` |
+| Lint | `go vet ./...` and `gofmt -l .` (must print nothing) |
+| Unit tests | `go test ./...` (the conformance suite skips without a live API) |
+| Local Postgres (port 5433) | `docker compose -f deploy/local/compose.yaml up -d --wait` |
+| Build the seed template | `go run ./cmd/seed build` (~25 s) |
+| Fresh run database | `go run ./cmd/seed reset` |
+| Prove two builds match | `go run ./cmd/seed checksum` |
+| Run the API locally | `DATABASE_URL=postgres://postgres:postgres@localhost:5433/stresslab STRESSLAB_TOKEN_KEY=<32+ chars> go run ./cmd/api -config config.yaml` |
+| Conformance (fresh DB + API) | `STRESSLAB_URL=http://localhost:8080 STRESSLAB_TOKEN_KEY=<same key> go test ./conformance -count=1 -v` |
+| k6 smoke run | `USERS=50 SETTLE=10 STEADY=60 k6 run loadtest/user.js` |
 | Check the Azure subscription | `az account show -o table` |

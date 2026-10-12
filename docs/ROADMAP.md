@@ -83,7 +83,7 @@ each one run and shown before the next.
 | 0.8 | **Ansible** — Docker, compose, config, DB reset | A fresh VM is configured with one command |
 | 0.9 | **Observability** — Prometheus, Loki, Tempo, Pyroscope, Alloy, dashboards as code | Every dashboard shows live data during a smoke run; trace → logs → profile links work |
 | 0.10 | **`stresslab` CLI** — infra and setup commands, then `run`, `search`, `confirm`, `compare`, `logs` | `stresslab search --step 0` completes a short test search on Azure |
-| 0.11 | **CI** — build, test, lint, and the results-publishing workflow (SPEC F14) | A fake run file in a branch regenerates the README table |
+| 0.11 | **CI** — build, test, lint, images to `ghcr.io`, and the results-publishing workflow (SPEC F14) | A push publishes images tagged by commit; a fake run file regenerates the README table |
 
 **Prerequisite on the laptop:** Docker inside WSL (enable Docker Desktop's WSL integration).
 
@@ -174,5 +174,5 @@ Optional, and never in the way of the ladder:
 |---|---|
 | Docs: README, SPEC, METHODOLOGY, ARCHITECTURE, ROADMAP | ✅ |
 | Docs: docs/README.md, AGENTS.md, CLAUDE.md | ✅ |
-| M0 · Build the lab | not started |
+| M0 · Build the lab | in progress — 0.1–0.5 ✅ |
 | M1 → M6 | not started |

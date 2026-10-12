@@ -162,8 +162,10 @@ sequenceDiagram
   per login); thousands of users logging in at once would saturate the machine and the run would
   measure a login storm, not the system. Users start gradually and the thresholds are judged only
   on the steady period after. The login cost is measured on purpose in side experiment **X1**.
-- Seeded users have known passwords (`user_<id>` / a seed-derived password) so k6 can log in.
-  They are synthetic test accounts, not secrets. **The signing key is a secret.**
+- Seeded users are `user_<id>`, all with the password `stresslab-password`, stored as one bcrypt
+  hash (cost 10) computed once — 50,000 per-user hashes would take close to an hour to seed, and
+  a fresh hash per seeding would break "same seed, same rows". Every login still pays a full
+  bcrypt compare. These are synthetic test accounts, not secrets. **The signing key is a secret.**
 - **An unknown username costs the same as a wrong password.** Login runs a dummy bcrypt compare
   when the user doesn't exist, so the response time never reveals which usernames are real
   (no user enumeration by timing). Both return the same `401` body.
@@ -420,6 +422,7 @@ window ends — the same alerting pattern production teams use.
 | Load shedding | step 10: the API returns `429 Retry-After` when full, measured against no shedding |
 | SLOs | the three thresholds, framed as SLOs with error budgets and burn-rate alerts |
 | Results | CI regenerates the README results from `runs/` (F14) |
+| Artifacts | GitHub Actions builds Docker images (api, seed, stresslab) on every push to `main` and pushes them to **`ghcr.io`** — free for public repos, and CI needs no Azure credentials. **CI never deploys to the lab:** `stresslab deploy` pulls an image by digest, deliberately, so a push can't change the system mid-session |
 | Load mix | per loop: 10% like, 15% create a post |
 | Tooling | the `stresslab` CLI (Go) drives Terraform, Ansible and k6, and runs searches on the brain (F13) — replaces the old open decision on who drives the search |
 

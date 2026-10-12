@@ -92,6 +92,7 @@ flowchart LR
 1. **Reset.** The database is recreated from a seeded template (`CREATE DATABASE … TEMPLATE
    stresslab_seed`, with statistics already analyzed), and the API container restarts with empty
    caches. Without this, every run's writes pile up and later runs do more work than earlier ones.
+   The clone takes **0.5–1.1 s** for the full dataset (measured on the laptop, 2026-10-03).
 2. **Warm-up.** 1,000 users for 60 s, in a separate unmeasured k6 run, so the page cache and the
    Go runtime are in the same warm state before every measurement.
 3. **Ramp-up.** Users start at a **fixed login rate** (set in step 0 from the measured bcrypt
