@@ -1,0 +1,28 @@
+# The brain (ARCHITECTURE.md, "Step 0"): the load generator. Prometheus, Loki,
+# Tempo, Pyroscope and Grafana join this file in ROADMAP 0.9.
+#
+#   BASE_URL=http://<machine under test>:8080 USERS=500 docker compose run --rm k6
+name: stresslab-brain
+
+services:
+  # One-shot: each `run` is one k6 execution.
+  k6:
+    image: grafana/k6:2.3.0
+    # Run as the host user so k6 can write its summary into OUT_DIR, which
+    # must exist first. k6 exits 0 even when it can't write the summary, so
+    # the caller checks the file exists (ROADMAP 0.10).
+    user: ${K6_USER:-1000:1000}
+    network_mode: host
+    working_dir: /scripts
+    command: ["run", "--summary-export", "/out/summary.json", "/scripts/user.js"]
+    environment:
+      BASE_URL: ${BASE_URL:?set BASE_URL to the machine under test}
+      USERS: ${USERS:-50}
+      LOGIN_RATE: ${LOGIN_RATE:-25}
+      SETTLE: ${SETTLE:-30}
+      STEADY: ${STEADY:-120}
+      RUN_SEED: ${RUN_SEED:-1}
+    volumes:
+      - ${LOADTEST_DIR:-../../loadtest}:/scripts:ro
+      - ${OUT_DIR:-./out}:/out
+    profiles: [tools]

@@ -1,0 +1,23 @@
+# Laptop only. Docker Desktop runs containers in its own VM, so host
+# networking isn't reachable from WSL (checked 2026-10-12). This override
+# switches to bridge networking with published ports. The Azure VMs never use it.
+#
+#   docker compose -f compose.yaml -f compose.laptop.yaml ...
+
+services:
+  postgres:
+    network_mode: !reset null
+    ports:
+      - "127.0.0.1:5434:5432" # 5432 and 5433 are taken on the laptop
+
+  api:
+    network_mode: !reset null
+    ports:
+      - "127.0.0.1:18080:8080" # 8080 is often taken on the laptop (e.g. a local k3d cluster)
+    environment:
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/stresslab
+
+  seed:
+    network_mode: !reset null
+    environment:
+      STRESSLAB_ADMIN_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres

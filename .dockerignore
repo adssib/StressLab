@@ -1,0 +1,10 @@
+.git
+bin
+docs
+runs
+loadtest
+deploy
+scripts
+*.md
+.env
+*.env

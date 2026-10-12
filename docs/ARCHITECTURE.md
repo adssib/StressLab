@@ -312,10 +312,12 @@ StressLab/
 │   └── cli/          the CLI's commands, guards and the search job
 ├── conformance/      the conformance suite (SPEC F6)
 ├── config.yaml       the API's config — step 0
+├── Dockerfile        one build, two images: api and seed (distroless, non-root)
 ├── loadtest/         the k6 script and its options (held fixed)
 ├── deploy/
 │   ├── brain/        compose.yaml + Prometheus, Grafana, Tempo config
 │   ├── sut/          compose.yaml + Postgres, PgBouncer, Redis config
+│   │                 (+ compose.laptop.yaml: bridge networking, laptop only)
 │   └── local/        laptop-only Postgres for development (port 5433)
 ├── dashboards/       Grafana dashboards as JSON (SPEC F11)
 ├── .github/workflows/ CI: build, test, lint — and results publishing (SPEC F14)

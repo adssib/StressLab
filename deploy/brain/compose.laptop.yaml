@@ -1,0 +1,6 @@
+# Laptop only: bridge networking, and reach the API published on the host.
+services:
+  k6:
+    network_mode: !reset null
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

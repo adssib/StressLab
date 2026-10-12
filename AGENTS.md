@@ -108,4 +108,6 @@ _The CLI doesn't exist yet (ROADMAP M0.10). This table fills in as commands beco
 | Run the API locally | `DATABASE_URL=postgres://postgres:postgres@localhost:5433/stresslab STRESSLAB_TOKEN_KEY=<32+ chars> go run ./cmd/api -config config.yaml` |
 | Conformance (fresh DB + API) | `STRESSLAB_URL=http://localhost:8080 STRESSLAB_TOKEN_KEY=<same key> go test ./conformance -count=1 -v` |
 | k6 smoke run | `USERS=50 SETTLE=10 STEADY=60 k6 run loadtest/user.js` |
+| **Machine-under-test stack, laptop** (from `deploy/sut`, after `cp .env.example .env`) | `docker compose -f compose.yaml -f compose.laptop.yaml up -d --wait postgres`, then `run --rm seed build` / `run --rm seed reset`, then `up -d --wait api` — API on **localhost:18080**, Postgres on **5434** |
+| **k6 from the brain stack, laptop** (from `deploy/brain`, `OUT_DIR` must exist) | `BASE_URL=http://host.docker.internal:18080 K6_USER=$(id -u):$(id -g) docker compose -f compose.yaml -f compose.laptop.yaml run --rm k6` |
 | Check the Azure subscription | `az account show -o table` |

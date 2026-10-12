@@ -174,5 +174,5 @@ Optional, and never in the way of the ladder:
 |---|---|
 | Docs: README, SPEC, METHODOLOGY, ARCHITECTURE, ROADMAP | ✅ |
 | Docs: docs/README.md, AGENTS.md, CLAUDE.md | ✅ |
-| M0 · Build the lab | in progress — 0.1–0.5 ✅ |
+| M0 · Build the lab | in progress — 0.1–0.6 ✅ |
 | M1 → M6 | not started |

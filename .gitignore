@@ -21,3 +21,6 @@ crash.log
 .vscode/
 .idea/
 .DS_Store
+
+# k6 output on the brain; committed results live in runs/
+deploy/brain/out/
